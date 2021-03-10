@@ -1,0 +1,184 @@
+package com.example.androiddevchallenge.ui.home
+
+import android.util.Log
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.sharp.Pause
+import androidx.compose.material.icons.sharp.PlayArrow
+import androidx.compose.material.icons.sharp.Stop
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.example.androiddevchallenge.ui.components.AnimatedCircle
+import com.example.androiddevchallenge.ui.theme.MyTheme
+import com.example.androiddevchallenge.ui.theme.primaryColor
+import com.example.androiddevchallenge.ui.theme.white
+import com.example.androiddevchallenge.util.Pager
+import com.example.androiddevchallenge.util.PagerState
+
+/**
+ * Created by admin on 2021/3/6 21:34.
+ * Email: zhangman523@126.com
+ */
+@Composable
+fun timeCountDownScreen(
+  time: String,
+  isPlay: Boolean,
+  startDegree: Float,
+  endDegree: Float,
+  startOrPauseClick: () -> Unit,
+  stopClick: () -> Unit
+) {
+  Column(
+    modifier = Modifier
+      .padding(15.dp)
+      .background(color = primaryColor),
+    horizontalAlignment = Alignment.CenterHorizontally
+  ) {
+    Box(Modifier.padding(16.dp)) {
+      AnimatedCircle(
+        Modifier
+          .height(300.dp)
+          .align(Alignment.Center)
+          .fillMaxWidth(), startDegree, endDegree
+      )
+      Column(modifier = Modifier.align(Alignment.Center)) {
+        Text(
+          time,
+          color = white,
+          style = MaterialTheme.typography.h2,
+          modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+      }
+
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      IconToggleButton(
+        checked = isPlay,
+        onCheckedChange = { startOrPauseClick() },
+      ) {
+        Icon(
+          imageVector = if (isPlay) Icons.Sharp.Pause else Icons.Sharp.PlayArrow,
+          contentDescription = null,
+          tint = white,
+        )
+      }
+
+      IconButton(onClick = stopClick) {
+        Icon(
+          imageVector = Icons.Sharp.Stop,
+          contentDescription = null,
+          tint = white,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+fun selectTimeScreen(startClick: (Int) -> Unit) {
+  val hoursData = mutableListOf<Int>()
+  val minutesAndSecondsData = mutableListOf<Int>()
+  for (i in 0..23) {
+    hoursData.add(i)
+  }
+  for (i in 0..59) {
+    minutesAndSecondsData.add(i)
+  }
+
+  var hours: Int = 0
+  var minutes: Int = 0
+  var seconds: Int = 0
+  Column(
+    modifier = Modifier
+      .padding(15.dp)
+      .background(color = primaryColor),
+    horizontalAlignment = Alignment.CenterHorizontally
+  ) {
+    Box(
+      modifier = Modifier
+        .padding(16.dp)
+        .fillMaxWidth()
+    ) {
+
+      Row(
+        modifier = Modifier
+          .height(300.dp)
+          .align(Alignment.Center),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        pageComposable(hoursData, select = { current ->
+          hours = hoursData[current]
+        })
+        Text("h", color = white, style = MaterialTheme.typography.body1)
+        pageComposable(minutesAndSecondsData, select = { current ->
+          minutes = minutesAndSecondsData[current]
+        })
+        Text("m", color = white, style = MaterialTheme.typography.body1)
+        pageComposable(minutesAndSecondsData, select = { current ->
+          seconds = minutesAndSecondsData[current]
+        })
+        Text("s", color = white, style = MaterialTheme.typography.body1)
+      }
+
+    }
+    IconButton(onClick = {
+      var secondSum = hours * 60 * 60 + minutes * 60 + seconds
+      startClick(secondSum)
+    }) {
+      Icon(
+        imageVector = Icons.Sharp.PlayArrow,
+        contentDescription = null,
+        tint = white,
+      )
+    }
+  }
+
+
+}
+
+@Composable
+fun pageComposable(data: MutableList<Int>, select: (Int) -> Unit) {
+  val pagerState = remember { PagerState() }
+  Log.d("CurrentOffset", pagerState.toString())
+  pagerState.maxPage = data.size - 1
+  Pager(
+    state = pagerState, modifier = Modifier
+      .padding(start = 10.dp, top = 16.dp, end = 10.dp)
+      .width(50.dp)
+      .height(200.dp),
+    pageSelect = select
+  ) {
+    var color: Long
+    if (currentPage == page) {
+      color = 0xffffffff
+    } else {
+      color = 0xff333333
+    }
+    Text(
+      text = data[page].toString(),
+      modifier = Modifier
+        .padding(4.dp)
+        .fillMaxWidth(),
+      style = MaterialTheme.typography.body1,
+      color = Color(color),
+      textAlign = TextAlign.Center,
+    )
+  }
+}
+
+@Preview(device = Devices.PIXEL_4_XL)
+@Composable
+fun HomeScreenPreview() {
+  MyTheme(darkTheme = false) {
+//    HomeScreen("00:12:44", true, 360f, 0f, { }, { })
+  }
+}
