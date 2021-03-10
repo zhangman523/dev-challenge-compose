@@ -5,7 +5,7 @@ Create a single screen working countdown timer and learn all about state in Comp
 
 ## :camera_flash: Screenshots
 
-![](./screenshots/samples.gif)
+<img src="/screenshots/samples.gif" width="260">
 ## License
 ```
 Copyright 2020 The Android Open Source Project
