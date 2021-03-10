@@ -23,96 +23,99 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Scaffold
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.TopAppBar
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.lifecycle.Observer
 import com.example.androiddevchallenge.ui.home.HomeViewModel
-import com.example.androiddevchallenge.ui.home.selectTimeScreen
-import com.example.androiddevchallenge.ui.home.timeCountDownScreen
+import com.example.androiddevchallenge.ui.home.SelectTimeScreen
+import com.example.androiddevchallenge.ui.home.TimeCountDownScreen
 import com.example.androiddevchallenge.ui.theme.MyTheme
 
 class MainActivity : AppCompatActivity() {
 
-  val homeViewModel by viewModels<HomeViewModel>()
+    val homeViewModel by viewModels<HomeViewModel>()
 
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-    setContent {
-      MyTheme {
-        MyApp(homeViewModel)
-      }
+        setContent {
+            MyTheme {
+                MyApp(homeViewModel)
+            }
+        }
+        homeViewModel.mToastMessage.observe(
+            this,
+            { message ->
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
+        )
     }
-    homeViewModel.mToastMessage.observe(this, Observer { message ->
-      Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    })
-  }
 }
 
 @Composable
 fun MyApp(viewModel: HomeViewModel) {
-  val timeState: State<String> = viewModel.timeStr.observeAsState("")
+    val timeState: State<String> = viewModel.timeStr.observeAsState("")
 
-  val isPlayState: State<Boolean> = viewModel.isPlay.observeAsState(false)
+    val isPlayState: State<Boolean> = viewModel.isPlay.observeAsState(false)
 
-  val proportions: State<Float> = viewModel.proportions.observeAsState(360f)
-  val isEndState: State<Boolean> = viewModel.isEnd.observeAsState(true)
-  Scaffold(
-    topBar = {
-      val title = "Countdown timer"
-      TopAppBar(
-        title = { Text(text = title) },
-      )
-    },
-    content = { innerPadding ->
-      val modifier = Modifier.padding(innerPadding)
-      Surface(color = MaterialTheme.colors.background, modifier = modifier) {
-        if (isEndState.value) {
-          selectTimeScreen(startClick = { seconds ->
-            if (seconds == 0) {
-              viewModel.mToastMessage.value = "please select times!"
-            } else {
-              viewModel.start(seconds)
+    val proportions: State<Float> = viewModel.proportions.observeAsState(360f)
+    val isEndState: State<Boolean> = viewModel.isEnd.observeAsState(true)
+    Scaffold(
+        topBar = {
+            val title = "Countdown timer"
+            TopAppBar(
+                title = { Text(text = title) },
+            )
+        },
+        content = { innerPadding ->
+            val modifier = Modifier.padding(innerPadding)
+            Surface(color = MaterialTheme.colors.background, modifier = modifier) {
+                if (isEndState.value) {
+                    SelectTimeScreen(
+                        startClick = { seconds ->
+                            if (seconds == 0) {
+                                viewModel.mToastMessage.value = "please select times!"
+                            } else {
+                                viewModel.start(seconds)
+                            }
+                        }
+                    )
+                } else {
+                    TimeCountDownScreen(
+                        time = timeState.value,
+                        isPlay = isPlayState.value,
+                        360f,
+                        proportions.value,
+                        startOrPauseClick = {
+                            viewModel.resumeOrPause()
+                        },
+                        stopClick = {
+                            viewModel.stop()
+                        }
+                    )
+                }
             }
-          })
-        } else {
-          timeCountDownScreen(
-            time = timeState.value,
-            isPlay = isPlayState.value,
-            360f,
-            proportions.value,
-            startOrPauseClick = {
-              viewModel.resumeOrPause()
-            },
-            stopClick = {
-              viewModel.stop()
-            }
-          )
         }
-      }
-    }
-  )
-
+    )
 }
 
 @Preview("Light Theme", widthDp = 360, heightDp = 640)
 @Composable
 fun LightPreview() {
-  MyTheme {
-    MyApp(viewModel = HomeViewModel())
-  }
+    MyTheme {
+        MyApp(viewModel = HomeViewModel())
+    }
 }
 
 @Preview("Dark Theme", widthDp = 360, heightDp = 640)
 @Composable
 fun DarkPreview() {
-  MyTheme(darkTheme = true) {
-    MyApp(viewModel = HomeViewModel())
-  }
+    MyTheme(darkTheme = true) {
+        MyApp(viewModel = HomeViewModel())
+    }
 }
