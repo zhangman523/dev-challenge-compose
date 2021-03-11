@@ -1,7 +1,15 @@
 # Countdown timer
 
+<!--- Replace <OWNER> with your Github Username and <REPOSITORY> with the name of your repository. -->
+<!--- You can find both of these in the url bar when you open your repository in github. -->
+![Workflow result](https://github.com/zhangman523/dev-challenge-compose/workflows/Check/badge.svg)
+
+## :bulb: Motivation and Context
+Working with Animation and State in Jetpack Compose for the first time.
+
+
 ## :scroll: Description
-Create a single screen working countdown timer and learn all about state in Compose.
+My app submission for Jetpack Compose Week 2 Challenge
 
 ## :camera_flash: Screenshots
 
