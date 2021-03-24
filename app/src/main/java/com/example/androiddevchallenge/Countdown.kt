@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.consumeAllChanges
@@ -47,14 +48,17 @@ import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
 val Offset.theta: Float get() = (atan2(y.toDouble(), x.toDouble()) * 180 / PI).toFloat()
 
 const val EndRadiusFraction = 0.75f
-const val StartRadiusFraction = 0.5f
+const val StartRadiusFraction = 0.4f
 const val TickWidth = 9f
+const val DotSpacing = TickWidth + 2f
 
 @Composable
 fun Countdown() {
@@ -90,11 +94,13 @@ fun Countdown() {
 }
 
 class TickwheelState(val scope: CoroutineScope) {
-  var seconds by mutableStateOf(0)
+  var totalSeconds by mutableStateOf(0)
+  val seconds: Int get() = totalSeconds % 60
+  val minutes: Int get() = floor(totalSeconds.toDouble() / 60).toInt()
+
   var isDragging by mutableStateOf(false)
   var endPosition by mutableStateOf<Offset?>(null)
-  var isStarted by mutableStateOf(false)
-  var minutes by mutableStateOf(0)
+  // var minutes by mutableStateOf(0)
 
   // var isCountingDown by mutableStateOf(false)
 
@@ -103,8 +109,7 @@ class TickwheelState(val scope: CoroutineScope) {
   fun endDrag() {
     val current = endPosition
     if (current != null) {
-      seconds = ((current.theta + 180f) / 360f * 60f).roundToInt()
-      isStarted = false
+      // totalSeconds = ((current.theta + 180f) / 360f * 60f).roundToInt()
       isDragging = false
     } else {
       error("Position was null when it shouldn't hare been ")
@@ -117,7 +122,6 @@ class TickwheelState(val scope: CoroutineScope) {
     stop()
   }
 
-
   fun onDrag(delta: Offset) {
     val prev = endPosition
     val next = if (prev != null) {
@@ -125,21 +129,26 @@ class TickwheelState(val scope: CoroutineScope) {
       val next = prev + delta
       val nextTheta = next.theta
 
-      when {
-        prevTheta > 90 && nextTheta < -90f -> minutes++
-        prevTheta < -90f && nextTheta > 90f -> minutes--
+      val nextMinutes = when {
+        prevTheta > 90 && nextTheta < -90f -> minutes + 1
+        prevTheta < -90f && nextTheta > 90f -> max(0, minutes - 1)
+        else -> minutes
       }
+      totalSeconds = (nextMinutes) * 60 + ((next.theta + 180f) / 360f * 60f).roundToInt()
       next
     } else {
       delta
     }
-    seconds = ((next.theta + 180f) / 360f * 60f).roundToInt()
     endPosition = next
   }
 
   val time: String
     get() {
-      return "${seconds}s"
+      return buildString {
+        append("$minutes".padStart(2, '0'))
+        append(":")
+        append("$seconds".padStart(2, '0'))
+      }
     }
 
   fun stop() {
@@ -147,19 +156,23 @@ class TickwheelState(val scope: CoroutineScope) {
     job = null
   }
 
+  fun countDown() {
+    val next = totalSeconds - 1
+    totalSeconds = next
+    val theta = (((next % 60) * 6 - 180) * PI / 180).toFloat()
+    val radius = 100f
+    endPosition = Offset(
+      cos(theta) * radius,
+      sin(theta) * radius
+    )
+  }
+
   fun toggle() {
     if (job == null) {
       job = scope.launch {
-        while (seconds > 0) {
+        while (totalSeconds > 0) {
           delay(1000)
-          val next = seconds - 1
-          seconds = next
-          val theta = (((next % 60) * 6 - 180) * PI / 180).toFloat()
-          val radius = 100f
-          endPosition = Offset(
-            cos(theta) * radius,
-            sin(theta) * radius
-          )
+          countDown()
         }
         endPosition = null
       }
@@ -204,7 +217,8 @@ fun TickWheel(
       }
 
       .drawBehind {
-        val endTheta = state.endPosition?.theta ?: -180f //-180 to 180
+        val endTheta = state.seconds * 6 - 180
+        val minutes = state.minutes
         val startRadius = size.width / 2 * StartRadiusFraction
         val endRadius = size.width / 2 * EndRadiusFraction
         val sweep = Brush.sweepGradient(
@@ -216,10 +230,25 @@ fun TickWheel(
         for (i in 0 until ticks) {
           val angle = i * (360 / ticks) - 180 //180 to 180
           val theta = angle * PI.toFloat() / 180f // radians
-
+          var radius = startRadius
+          val points = List(minutes) {
+            center + Offset(
+              cos(theta) * radius,
+              sin(theta) * radius
+            ).also {
+              radius += DotSpacing
+            }
+          }
+          drawPoints(
+            points,
+            pointMode = PointMode.Points,
+            brush = sweep,
+            strokeWidth = TickWidth,
+            cap = StrokeCap.Round,
+          )
           val startPos = Offset(
-            cos(theta) * startRadius,
-            sin(theta) * startRadius
+            cos(theta) * radius,
+            sin(theta) * radius
           )
           val endPos = Offset(
             cos(theta) * endRadius,
@@ -234,7 +263,6 @@ fun TickWheel(
             cap = StrokeCap.Round,
           )
         }
-
       },
     contentAlignment = Alignment.Center
   ) {
