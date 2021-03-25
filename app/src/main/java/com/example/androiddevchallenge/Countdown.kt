@@ -2,20 +2,26 @@ package com.example.androiddevchallenge
 
 import android.annotation.SuppressLint
 import android.graphics.Matrix
+import android.os.Build
+import android.os.VibrationEffect
 import android.os.Vibrator
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,6 +31,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.CacheDrawScope
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -41,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.center
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toOffset
 import androidx.core.content.ContextCompat.getSystemService
@@ -63,25 +71,17 @@ import kotlin.math.sin
 
 val Offset.theta: Float get() = (atan2(y.toDouble(), x.toDouble()) * 180 / PI).toFloat()
 
-const val TickWidth = 9f
-const val Epsilon = 9f
-const val RadiusA = 0.36f
-const val RadiusB = 0.40f
-const val RadiusC = 0.48f
-const val RadiusD = 0.75f
-const val RadiusE = 1.4f
-const val EndRadiusFraction = 0.75f
-
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun Countdown() {
   val scope = rememberCoroutineScope()
-  val state = remember { TickwheelState(scope) }
-  Column(
+  val vibrator = systemService<Vibrator>()
+  val state = remember { TickwheelState(scope, vibrator) }
+  Box(
     Modifier
       .fillMaxSize()
       .background(Brush.radialGradient(listOf(bgColorCenter, bgColorEdge))),
-    verticalArrangement = Arrangement.Center,
-    horizontalAlignment = Alignment.CenterHorizontally
+    contentAlignment = Alignment.Center
   ) {
     TickWheel(
       modifier = Modifier.fillMaxWidth(),
@@ -91,7 +91,7 @@ fun Countdown() {
       endColor = darkRed
     ) {
       Text(
-        text = state.time,
+        text = state.timeLeftDisplay,
         style = TextStyle(
           color = Color.White,
           fontSize = 48.sp,
@@ -99,29 +99,56 @@ fun Countdown() {
         )
       )
     }
-    IconButton(onClick = { state.toggle() }) {
-      Icon(Icons.Default.PlayArrow, contentDescription = "Play")
+    AnimatedVisibility(
+      visible = state.totalSeconds > 0,
+      Modifier
+        .align(Alignment.BottomCenter)
+        .padding(bottom = 80.dp)
+    ) {
+      Row {
+        IconButton(onClick = { state.toggle() }) {
+          Icon(
+            if (state.isCountingDown) Icons.Default.Pause else Icons.Default.PlayArrow,
+            contentDescription = if (state.isCountingDown) "Pause" else "Start",
+          )
+        }
+        IconButton(onClick = { state.clear() }) {
+          Icon(Icons.Default.Clear, contentDescription = "Clear")
+        }
+      }
     }
+
   }
 }
 
-class TickwheelState(val scope: CoroutineScope) {
+class TickwheelState(
+  private val scope: CoroutineScope,
+  private val vibrator: Vibrator?
+) {
   var totalSeconds by mutableStateOf(0)
-  val seconds: Int get() = totalSeconds % 60
-  val minutes: Int get() = floor(totalSeconds.toDouble() / 60).toInt()
+    private set
+  private var isDragging by mutableStateOf(false)
+  private var endPosition by mutableStateOf<Offset?>(null)
+  private var job by mutableStateOf<Job?>(null)
 
-  var isDragging by mutableStateOf(false)
-  var endPosition by mutableStateOf<Offset?>(null)
-  // var minutes by mutableStateOf(0)
-
-  // var isCountingDown by mutableStateOf(false)
-
-  private var job: Job? = null
+  val seconds: Int
+    get() = totalSeconds % 60
+  val minutes: Int
+    get() = floor(totalSeconds.toDouble() / 60).toInt()
+  val isCountingDown: Boolean
+    get() = job != null
+  val timeLeftDisplay: String
+    get() {
+      return buildString {
+        append("$minutes".padStart(2, '0'))
+        append(":")
+        append("$seconds".padStart(2, '0'))
+      }
+    }
 
   fun endDrag() {
     val current = endPosition
     if (current != null) {
-      // totalSeconds = ((current.theta + 180f) / 360f * 60f).roundToInt()
       isDragging = false
     } else {
       error("Position was null when it shouldn't hare been ")
@@ -129,13 +156,14 @@ class TickwheelState(val scope: CoroutineScope) {
   }
 
   fun startDrag(startPosition: Offset) {
-    endPosition = startPosition
     isDragging = true
+    endPosition = startPosition
     stop()
   }
 
   fun onDrag(delta: Offset) {
     val prev = endPosition
+    val prevSeconds = totalSeconds
     val next = if (prev != null) {
       val prevTheta = prev.theta
       val next = prev + delta
@@ -146,37 +174,18 @@ class TickwheelState(val scope: CoroutineScope) {
         prevTheta < -90f && nextTheta > 90f -> max(0, minutes - 1)
         else -> minutes
       }
-      totalSeconds = floor((nextMinutes) * 60 + ((next.theta + 180f) / 360f * 60f)).toInt()
+      val nextSeconds = floor((nextMinutes) * 60 + ((next.theta + 180f) / 360f * 60f)).toInt()
+      if (nextSeconds != prevSeconds) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+        }
+      }
+      totalSeconds = nextSeconds
       next
     } else {
       delta
     }
     endPosition = next
-  }
-
-  val time: String
-    get() {
-      return buildString {
-        append("$minutes".padStart(2, '0'))
-        append(":")
-        append("$seconds".padStart(2, '0'))
-      }
-    }
-
-  fun stop() {
-    job?.cancel()
-    job = null
-  }
-
-  fun countDown() {
-    val next = totalSeconds - 1
-    totalSeconds = next
-    val theta = (((next % 60) * 6 - 180) * PI / 180).toFloat()
-    val radius = 100f
-    endPosition = Offset(
-      cos(theta) * radius,
-      sin(theta) * radius
-    )
   }
 
   fun toggle() {
@@ -192,7 +201,37 @@ class TickwheelState(val scope: CoroutineScope) {
       stop()
     }
   }
+
+  fun clear() {
+    stop()
+    totalSeconds = 0
+    endPosition = null
+  }
+
+  fun stop() {
+    job?.cancel()
+    job = null
+  }
+
+  fun countDown() {
+    val next = totalSeconds - 1
+    val theta = (((next % 60) * 6 - 180) * PI / 180).toFloat()
+    val radius = 100f
+    totalSeconds = next
+    endPosition = Offset(
+      cos(theta) * radius,
+      sin(theta) * radius
+    )
+  }
 }
+
+const val TickWidth = 9f
+const val Epsilon = 9f
+const val RadiusA = 0.36f
+const val RadiusB = 0.40f
+const val RadiusC = 0.48f
+const val RadiusD = 0.75f
+const val RadiusE = 1.4f
 
 @SuppressLint("RestrictedApi")
 @Composable
@@ -205,8 +244,6 @@ fun TickWheel(
   content: @Composable () -> Unit
 ) {
   var origin by remember { mutableStateOf(Offset.Zero) }
-  val vibrator = systemService<Vibrator>()
-  val secondTransition by animateFloatAsState(state.seconds.toFloat())
   val minuteTransition by animateFloatAsState(state.minutes.toFloat())
 
   Box(
@@ -242,81 +279,39 @@ fun TickWheel(
           .copy(alpha = 0.1f)
           .toBrush()
 
-        val matrix = Matrix().also { it.setRotate(-182f, size.width / 2, size.height / 2) }
-
-        val sweep = ShaderBrush(
-          android.graphics
-            .SweepGradient(
-              size.width / 2,
-              size.height / 2,
-              startColor.toArgb(),
-              endColor.toArgb()
-            )
-            .also { it.setLocalMatrix(matrix) }
+        val sweep = Brush.sweepGradient(
+          startColor,
+          endColor,
+          center,
+          // use a little over 180deg so that the first "tick" mark isn't split down the middle
+          -182f
         )
-
         onDrawBehind {
           val endAngle = state.seconds * 6 - 180
           val minutes = state.minutes
           for (i in 0 until ticks) {
             val angle = i * (360 / ticks) - 180 //180 to 180
             val theta = angle * PI.toFloat() / 180f // radians
-            val on = angle < endAngle
+            val onBrush = if (angle < endAngle) sweep else offBrush
             val up = minutes >= minuteTransition
             val t = 1 - abs(minutes - minuteTransition)
 
             if (up) {
               if (minutes > 1) { // only needed when
-                drawTick(
-                  sweep,
-                  theta,
-                  lerp(b, a, t),
-                  lerp(c, b, t),
-                  1 - t
-                )
+                drawTick(sweep, theta, lerp(b, a, t), lerp(c, b, t), 1 - t)
               }
 
               if (minutes > 0) {
-                drawTick(
-                  sweep,
-                  theta,
-                  lerp(c, b, t),
-                  lerp(d, c, t),
-                  1f
-                )
+                drawTick(sweep, theta, lerp(c, b, t), lerp(d, c, t), 1f)
               }
-              drawTick(
-                if (on) sweep else offBrush,
-                theta,
-                lerp(d, c, t),
-                lerp(e, d, t),
-                t
-              )
+              drawTick(onBrush, theta, lerp(d, c, t), lerp(e, d, t), t)
             } else {
               if (minutes > 0) { // only needed when
-                drawTick(
-                  sweep,
-                  theta,
-                  lerp(a, b, t),
-                  lerp(b, c, t),
-                  t
-                )
+                drawTick(sweep, theta, lerp(a, b, t), lerp(b, c, t), t)
               }
 
-              drawTick(
-                if (on) sweep else offBrush,
-                theta,
-                lerp(b, c, t),
-                lerp(c, d, t),
-                1f
-              )
-              drawTick(
-                offBrush,
-                theta,
-                lerp(c, d, t),
-                lerp(d, e, t),
-                1 - t
-              )
+              drawTick(onBrush, theta, lerp(b, c, t), lerp(c, d, t), 1f)
+              drawTick(offBrush, theta, lerp(c, d, t), lerp(d, e, t), 1 - t)
             }
           }
         }
@@ -351,6 +346,26 @@ fun DrawScope.drawTick(
     alpha = alpha.coerceIn(0f, 1f)
   )
 }
+
+fun Brush.Companion.sweepGradient(
+  startColor: Color,
+  endColor: Color,
+  center: Offset,
+  startAngle: Float
+): Brush {
+  val matrix = Matrix().also { it.setRotate(startAngle, center.x, center.y) }
+  return ShaderBrush(android.graphics.SweepGradient(
+    center.x,
+    center.y,
+    startColor.toArgb(),
+    endColor.toArgb()
+  )
+    .also {
+      it.setLocalMatrix(matrix)
+    })
+}
+
+val CacheDrawScope.center: Offset get() = Offset(size.width / 2, size.height / 2)
 
 @Composable
 inline fun <reified T> systemService(): T? {
